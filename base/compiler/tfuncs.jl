@@ -1945,7 +1945,7 @@ function array_elmtype(@nospecialize ary)
     return Any
 end
 
-@nospecs function _opaque_closure_tfunc(𝕃::AbstractLattice, arg, lb, ub, source, env::Vector{Any}, linfo::MethodInstance)
+@nospecs function opaque_closure_tfunc(𝕃::AbstractLattice, arg, lb, ub, source, env::Vector{Any}, linfo::MethodInstance)
     argt, argt_exact = instanceof_tfunc(arg)
     lbt, lb_exact = instanceof_tfunc(lb)
     if !lb_exact
@@ -2307,7 +2307,7 @@ function builtin_nothrow(𝕃::AbstractLattice, @nospecialize(f), argtypes::Vect
 end
 
 function builtin_tfunction(interp::AbstractInterpreter, @nospecialize(f), argtypes::Vector{Any},
-                           sv::Union{InferenceState,IRCode,Nothing})
+                           sv::Union{AbsIntState, Nothing})
     𝕃ᵢ = typeinf_lattice(interp)
     if f === tuple
         return tuple_tfunc(𝕃ᵢ, argtypes)
@@ -2478,7 +2478,7 @@ end
 # TODO: this function is a very buggy and poor model of the return_type function
 # since abstract_call_gf_by_type is a very inaccurate model of _method and of typeinf_type,
 # while this assumes that it is an absolutely precise and accurate and exact model of both
-function return_type_tfunc(interp::AbstractInterpreter, argtypes::Vector{Any}, si::StmtInfo, sv::Union{InferenceState, IRCode})
+function return_type_tfunc(interp::AbstractInterpreter, argtypes::Vector{Any}, si::StmtInfo, sv::AbsIntState)
     if length(argtypes) == 3
         tt = widenslotwrapper(argtypes[3])
         if isa(tt, Const) || (isType(tt) && !has_free_typevars(tt))

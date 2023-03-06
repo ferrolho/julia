@@ -32,6 +32,15 @@ struct StmtInfo
     used::Bool
 end
 
+struct MethodInfo
+    propagate_inbounds::Bool
+    method_for_inference_limit_heuristics::Union{Nothing,Method}
+end
+function MethodInfo(src::CodeInfo)
+    return MethodInfo(src.propagate_inbounds,
+        src.method_for_inference_limit_heuristics::Union{Nothing,Method})
+end
+
 """
     v::VarState
 
