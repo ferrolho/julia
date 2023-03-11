@@ -60,7 +60,7 @@ let
         :InteractiveUtils,
         :LibGit2,
         :Profile,
-        :SparseArrays,
+#        :SparseArrays,
         :UUIDs,
 
         # 3-depth packages

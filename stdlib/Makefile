@@ -18,7 +18,7 @@ DIRS := $(build_datarootdir)/julia/stdlib/$(VERSDIR) $(build_prefix)/manifest/$(
 $(foreach dir,$(DIRS),$(eval $(call dir_target,$(dir))))
 
 JLLS = DSFMT GMP CURL LIBGIT2 LLVM LIBSSH2 LIBUV MBEDTLS MPFR NGHTTP2 \
-       BLASTRAMPOLINE OPENBLAS OPENLIBM P7ZIP PCRE LIBSUITESPARSE ZLIB \
+       BLASTRAMPOLINE OPENBLAS OPENLIBM P7ZIP PCRE ZLIB \
        LLVMUNWIND CSL UNWIND LLD
 
 # Initialize this with JLLs that aren't in "deps/$(LibName).version"
@@ -46,7 +46,7 @@ STDLIBS = Artifacts Base64 CRC32c Dates Distributed FileWatching \
           SharedArrays Sockets Test TOML Unicode UUIDs \
           $(JLL_NAMES)
 
-STDLIBS_EXT = Pkg Statistics LibCURL DelimitedFiles Downloads ArgTools Tar NetworkOptions SuiteSparse SparseArrays SHA
+STDLIBS_EXT = Pkg Statistics LibCURL DelimitedFiles Downloads ArgTools Tar NetworkOptions SHA
 
 $(foreach module, $(STDLIBS_EXT), $(eval $(call stdlib-external,$(module),$(shell echo $(module) | tr a-z A-Z))))
 
