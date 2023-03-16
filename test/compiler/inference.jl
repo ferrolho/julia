@@ -4761,6 +4761,16 @@ end
     issue48679_const(x, false)
 end |> only == Type{Float64}
 
+# `invoke` call in irinterp
+@noinline _irinterp_invoke(x::Any) = :any
+@noinline _irinterp_invoke(x::T) where T = T
+Base.@constprop :aggressive Base.@assume_effects :foldable function irinterp_invoke(x::T, b) where T
+    return @invoke _irinterp_invoke(x::(b ? T : Any))
+end
+@test Base.return_types((Int,)) do x
+    irinterp_invoke(x, true)
+end |> only == Type{Int}
+
 # recursion detection for semi-concrete interpretation
 # avoid direct infinite loop via `concrete_eval_invoke`
 Base.@assume_effects :foldable function recur_irinterp1(x, y)

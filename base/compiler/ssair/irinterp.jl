@@ -48,6 +48,13 @@ function propagate_control_effects!(interp::AbstractInterpreter, idx::Int, stmt:
     return false
 end
 
+function abstract_call(interp::AbstractInterpreter, arginfo::ArgInfo, irsv::IRInterpretationState)
+    si = StmtInfo(true) # TODO better job here?
+    (; rt, effects, info) = abstract_call(interp, arginfo, si, irsv)
+    irsv.ir.stmts[irsv.curridx[]][:info] = info
+    return RTEffects(rt, effects)
+end
+
 function reprocess_instruction!(interp::AbstractInterpreter, idx::Int, bb::Union{Int,Nothing},
     @nospecialize(inst), @nospecialize(typ), irsv::IRInterpretationState,
     extra_reprocess::Union{Nothing,BitSet,BitSetBoundedMinPrioritySet})
@@ -103,21 +110,7 @@ function reprocess_instruction!(interp::AbstractInterpreter, idx::Int, bb::Union
     rt = nothing
     if isa(inst, Expr)
         head = inst.head
-        if head === :call
-            argtypes = collect_argtypes(interp, inst.args, nothing, irsv)
-            if argtypes === nothing
-                rt = Bottom
-            else
-                arginfo = ArgInfo(inst.args, argtypes)
-                si = StmtInfo(true) # TODO better job here?
-                (; rt, effects, info) = abstract_call(interp, arginfo, si, irsv)
-                ir.stmts[idx][:flag] |= flags_for_effects(effects)
-                if is_foldable(effects) && isa(rt, Const) && is_inlineable_constant(rt.val)
-                    ir.stmts[idx][:inst] = quoted(rt.val)
-                end
-                ir.stmts[idx][:info] = info
-            end
-        elseif head === :foreigncall || head === :new || head === :splatnew
+        if head === :call || head === :foreigncall || head === :new || head === :splatnew
             (; rt, effects) = abstract_eval_statement_expr(interp, inst, nothing, irsv)
             ir.stmts[idx][:flag] |= flags_for_effects(effects)
             if is_foldable(effects) && isa(rt, Const) && is_inlineable_constant(rt.val)
