@@ -634,52 +634,47 @@ end
 # =====================
 
 # TODO add `result::InferenceResult` and put the irinterp result into the inference cache?
-struct IRInterpretationState
-    method_info::MethodInfo
-    ir::IRCode
-    mi::MethodInstance
-    world::UInt
-    curridx::RefValue{Int}
-    argtypes_refined::Vector{Bool}
-    sptypes::Vector{VarState}
-    tpdum::TwoPhaseDefUseMap
-    ssa_refined::BitSet
-    lazydomtree::LazyDomtree
-    valid_worlds::RefValue{WorldRange}
-    edges::Vector{Any}
-    parent # ::AbsIntState
-end
+mutable struct IRInterpretationState
+    const method_info::MethodInfo
+    const ir::IRCode
+    const mi::MethodInstance
+    const world::UInt
+    curridx::Int
+    const argtypes_refined::Vector{Bool}
+    const sptypes::Vector{VarState}
+    const tpdum::TwoPhaseDefUseMap
+    const ssa_refined::BitSet
+    const lazydomtree::LazyDomtree
+    valid_worlds::WorldRange
+    const edges::Vector{Any}
+    parent # ::Union{Nothing,AbsIntState}
 
-# AbsIntState
-# ===========
-
-const AbsIntState = Union{InferenceState,IRInterpretationState}
-
-function IRInterpretationState(interp::AbstractInterpreter,
-    method_info::MethodInfo, ir::IRCode, mi::MethodInstance, argtypes::Vector{Any},
-    world::UInt, min_world::UInt, max_world::UInt, parent::AbsIntState)
-    curridx = RefValue(1)
-    given_argtypes = Vector{Any}(undef, length(argtypes))
-    for i = 1:length(given_argtypes)
-        given_argtypes[i] = widenslotwrapper(argtypes[i])
+    function IRInterpretationState(interp::AbstractInterpreter,
+        method_info::MethodInfo, ir::IRCode, mi::MethodInstance, argtypes::Vector{Any},
+        world::UInt, min_world::UInt, max_world::UInt)
+        curridx = 1
+        given_argtypes = Vector{Any}(undef, length(argtypes))
+        for i = 1:length(given_argtypes)
+            given_argtypes[i] = widenslotwrapper(argtypes[i])
+        end
+        given_argtypes = va_process_argtypes(optimizer_lattice(interp), given_argtypes, mi)
+        argtypes_refined = Bool[!⊑(optimizer_lattice(interp), ir.argtypes[i], given_argtypes[i])
+            for i = 1:length(given_argtypes)]
+        empty!(ir.argtypes)
+        append!(ir.argtypes, given_argtypes)
+        tpdum = TwoPhaseDefUseMap(length(ir.stmts))
+        ssa_refined = BitSet()
+        lazydomtree = LazyDomtree(ir)
+        valid_worlds = WorldRange(min_world, max_world == typemax(UInt) ? get_world_counter() : max_world)
+        edges = Any[]
+        parent = nothing
+        return new(method_info, ir, mi, world, curridx, argtypes_refined, ir.sptypes, tpdum,
+                   ssa_refined, lazydomtree, valid_worlds, edges, parent)
     end
-    given_argtypes = va_process_argtypes(optimizer_lattice(interp), given_argtypes, mi)
-    argtypes_refined = Bool[!⊑(optimizer_lattice(interp), ir.argtypes[i], given_argtypes[i])
-        for i = 1:length(given_argtypes)]
-    empty!(ir.argtypes)
-    append!(ir.argtypes, given_argtypes)
-    tpdum = TwoPhaseDefUseMap(length(ir.stmts))
-    ssa_refined = BitSet()
-    lazydomtree = LazyDomtree(ir)
-    valid_worlds = RefValue(WorldRange(min_world, max_world == typemax(UInt) ? get_world_counter() : max_world))
-    edges = Any[]
-    return IRInterpretationState(method_info, ir, mi, world, curridx, argtypes_refined,
-                                 ir.sptypes, tpdum, ssa_refined, lazydomtree,
-                                 valid_worlds, edges, parent)
 end
 
 function IRInterpretationState(interp::AbstractInterpreter,
-    code::CodeInstance, mi::MethodInstance, argtypes::Vector{Any}, world::UInt, parent::AbsIntState)
+    code::CodeInstance, mi::MethodInstance, argtypes::Vector{Any}, world::UInt)
     @assert code.def === mi
     src = @atomic :monotonic code.inferred
     if isa(src, Vector{UInt8})
@@ -690,8 +685,13 @@ function IRInterpretationState(interp::AbstractInterpreter,
     method_info = MethodInfo(src)
     ir = inflate_ir(src, mi)
     return IRInterpretationState(interp, method_info, ir, mi, argtypes, world,
-                                 src.min_world, src.max_world, parent)
+                                 src.min_world, src.max_world)
 end
+
+# AbsIntState
+# ===========
+
+const AbsIntState = Union{InferenceState,IRInterpretationState}
 
 frame_instance(sv::InferenceState) = sv.linfo
 frame_instance(sv::IRInterpretationState) = sv.mi
@@ -736,14 +736,9 @@ has_conditional(𝕃::AbstractLattice, ::InferenceState) = has_conditional(𝕃)
 has_conditional(::AbstractLattice, ::IRInterpretationState) = false
 
 # work towards converging the valid age range for sv
-function update_valid_age!(sv::InferenceState, valid_worlds::WorldRange)
+function update_valid_age!(sv::AbsIntState, valid_worlds::WorldRange)
     valid_worlds = sv.valid_worlds = intersect(valid_worlds, sv.valid_worlds)
     @assert sv.world in valid_worlds "invalid age range update"
-    return valid_worlds
-end
-function update_valid_age!(irsv::IRInterpretationState, valid_worlds::WorldRange)
-    valid_worlds = irsv.valid_worlds[] = intersect(valid_worlds, irsv.valid_worlds[])
-    @assert irsv.world in valid_worlds "invalid age range update"
     return valid_worlds
 end
 
@@ -799,13 +794,13 @@ function add_mt_backedge!(irsv::IRInterpretationState, mt::MethodTable, @nospeci
 end
 
 get_curr_ssaflag(sv::InferenceState) = sv.src.ssaflags[sv.currpc]
-get_curr_ssaflag(sv::IRInterpretationState) = sv.ir.stmts[sv.curridx[]][:flag]
+get_curr_ssaflag(sv::IRInterpretationState) = sv.ir.stmts[sv.curridx][:flag]
 
 add_curr_ssaflag!(sv::InferenceState, flag::UInt8) = sv.src.ssaflags[sv.currpc] |= flag
-add_curr_ssaflag!(sv::IRInterpretationState, flag::UInt8) = sv.ir.stmts[sv.curridx[]][:flag] |= flag
+add_curr_ssaflag!(sv::IRInterpretationState, flag::UInt8) = sv.ir.stmts[sv.curridx][:flag] |= flag
 
 sub_curr_ssaflag!(sv::InferenceState, flag::UInt8) = sv.src.ssaflags[sv.currpc] &= ~flag
-sub_curr_ssaflag!(sv::IRInterpretationState, flag::UInt8) = sv.ir.stmts[sv.curridx[]][:flag] &= ~flag
+sub_curr_ssaflag!(sv::IRInterpretationState, flag::UInt8) = sv.ir.stmts[sv.curridx][:flag] &= ~flag
 
 merge_effects!(::AbstractInterpreter, caller::InferenceState, effects::Effects) =
     caller.ipo_effects = merge_effects(caller.ipo_effects, effects)

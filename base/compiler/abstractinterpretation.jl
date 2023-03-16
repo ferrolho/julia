@@ -989,8 +989,9 @@ function abstract_call_method_with_const_args(interp::AbstractInterpreter,
         mi_cache = WorldView(code_cache(interp), world)
         code = get(mi_cache, mi, nothing)
         if code !== nothing
-            irsv = IRInterpretationState(interp, code, mi, arginfo.argtypes, world, sv)
+            irsv = IRInterpretationState(interp, code, mi, arginfo.argtypes, world)
             if irsv !== nothing
+                irsv.parent = sv
                 irinterp = isa(interp, NativeInterpreter) ? NativeInterpreter(interp; irinterp=true) : interp
                 rt, nothrow = ir_abstract_constant_propagation(irinterp, irsv)
                 @assert !(rt isa Conditional || rt isa MustAlias) "invalid lattice element returned from irinterp"

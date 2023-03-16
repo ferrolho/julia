@@ -26,8 +26,9 @@ function concrete_eval_invoke(interp::AbstractInterpreter,
         if is_constprop_edge_recursed(mi, irsv)
             return Pair{Any,Bool}(nothing, is_nothrow(effects))
         end
-        newirsv = IRInterpretationState(interp, code, mi, argtypes, world, irsv)
+        newirsv = IRInterpretationState(interp, code, mi, argtypes, world)
         if newirsv !== nothing
+            newirsv.parent = irsv
             return _ir_abstract_constant_propagation(interp, newirsv)
         end
         return Pair{Any,Bool}(nothing, is_nothrow(effects))
@@ -51,7 +52,7 @@ end
 function abstract_call(interp::AbstractInterpreter, arginfo::ArgInfo, irsv::IRInterpretationState)
     si = StmtInfo(true) # TODO better job here?
     (; rt, effects, info) = abstract_call(interp, arginfo, si, irsv)
-    irsv.ir.stmts[irsv.curridx[]][:info] = info
+    irsv.ir.stmts[irsv.curridx][:info] = info
     return RTEffects(rt, effects)
 end
 
@@ -199,7 +200,7 @@ function _ir_abstract_constant_propagation(interp::AbstractInterpreter, irsv::IR
         stmts = bbs[bb].stmts
         lstmt = last(stmts)
         for idx = stmts
-            irsv.curridx[] = idx
+            irsv.curridx = idx
             inst = ir.stmts[idx][:inst]
             typ = ir.stmts[idx][:type]
             any_refined = false
@@ -247,7 +248,7 @@ function _ir_abstract_constant_propagation(interp::AbstractInterpreter, irsv::IR
             stmts = bbs[bb].stmts
             lstmt = last(stmts)
             for idx = stmts
-                irsv.curridx[] = idx
+                irsv.curridx = idx
                 inst = ir.stmts[idx][:inst]
                 for ur in userefs(inst)
                     val = ur[]
@@ -271,7 +272,7 @@ function _ir_abstract_constant_propagation(interp::AbstractInterpreter, irsv::IR
             stmts = bbs[bb].stmts
             lstmt = last(stmts)
             for idx = stmts
-                irsv.curridx[] = idx
+                irsv.curridx = idx
                 inst = ir.stmts[idx][:inst]
                 for ur in userefs(inst)
                     val = ur[]
@@ -291,7 +292,7 @@ function _ir_abstract_constant_propagation(interp::AbstractInterpreter, irsv::IR
         end
         while !isempty(stmt_ip)
             idx = popfirst!(stmt_ip)
-            irsv.curridx[] = idx
+            irsv.curridx = idx
             inst = ir.stmts[idx][:inst]
             typ = ir.stmts[idx][:type]
             if reprocess_instruction!(interp,
@@ -323,7 +324,7 @@ function _ir_abstract_constant_propagation(interp::AbstractInterpreter, irsv::IR
         end
     end
 
-    if last(irsv.valid_worlds[]) >= get_world_counter()
+    if last(irsv.valid_worlds) >= get_world_counter()
         # if we aren't cached, we don't need this edge
         # but our caller might, so let's just make it anyways
         store_backedges(frame_instance(irsv), irsv.edges)
